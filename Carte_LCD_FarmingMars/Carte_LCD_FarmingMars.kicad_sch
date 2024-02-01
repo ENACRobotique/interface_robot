@@ -2315,7 +2315,7 @@
     (property "Value" "Screw_Terminal_01x02" (at 74.93 33.02 90)
       (effects (font (size 1.27 1.27)))
     )
-    (property "Footprint" "" (at 78.74 34.29 0)
+    (property "Footprint" "ENAC_robotique:Bornier_2x3.81mm" (at 78.74 34.29 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (property "Datasheet" "~" (at 78.74 34.29 0)
