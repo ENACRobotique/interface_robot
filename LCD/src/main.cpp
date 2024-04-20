@@ -16,23 +16,25 @@ LiquidCrystal lcd(LCD_RS, LCD_EN, LCD_D4, LCD_D5, LCD_D6, LCD_D7);
 
 typedef struct {
   pin_size_t pin;
-  int debounce;     //  counter for button debouce
+  int debounce_counter;     //  counter for button debouce
   int state;
   /**
    * Valeurs possibles pour event:
-   *    'N': pas d'évènements
    *    'P': pressed
    *    'R': released
+   *    'O': open (état)
+   *    'C': closed (état)
   */
   char event;
 } btn_t;
 
 
-btn_t ok_btn = {BTN_OK, -1, 0, 'N'};
-btn_t ret_btn = {BTN_RET, -1, 0, 'N'};
-btn_t col_btn = {BTN_COLOR, -1, 0, 'N'};
-btn_t tirette = {TIRETTE, -1, 0, 'N'};
+btn_t ok_btn = {BTN_OK, -1, 0, 'O'};
+btn_t ret_btn = {BTN_RET, -1, 0, 'O'};
+btn_t col_btn = {BTN_COLOR, -1, 0, 'O'};
+btn_t tirette = {TIRETTE, -1, 0, 'O'};
 int last_potar = 0;   // last potar value sent
+bool event_triggered = false;
 
 // last report time
 uint32_t report_time = 0;
@@ -48,7 +50,7 @@ void snprintf_events(char *str, size_t size, int potar_val);
 
 void btn_cb(btn_t* btn) {
   if(digitalRead(btn->pin) == btn->state) {
-    btn->debounce = DEBOUNCE_VAL;
+    btn->debounce_counter = DEBOUNCE_VAL;
   }
 }
 
@@ -86,16 +88,26 @@ void setup() {
 }
 
 void debounce_update(btn_t* btn) {
-  if(btn->debounce != -1) {
-    btn->debounce -= 1;
-    if(btn->debounce == 0 && digitalRead(btn->pin) == btn->state) {
+  if(btn->debounce_counter != -1) {
+    btn->debounce_counter -= 1;
+    if(btn->debounce_counter == 0 && digitalRead(btn->pin) == btn->state) {
       btn->state ^= 1;
       if(btn->state) {
         btn->event = 'P';
       } else {
         btn->event = 'R';
       }
+      event_triggered = true;
     }
+  }
+}
+
+void consume_event(btn_t* btn) {
+  if(btn->event == 'P') {
+    btn->event = 'C';
+  }
+  else if(btn->event == 'R') {
+    btn->event = 'O';
   }
 }
 
@@ -106,10 +118,10 @@ void snprintf_events(char *str, size_t size, int potar_val) {
     potar_val);
   
   // reset events
-  ok_btn.event = 'N';
-  ret_btn.event = 'N';
-  col_btn.event = 'N';
-  tirette.event = 'N';
+  consume_event(&ok_btn);
+  consume_event(&ret_btn);
+  consume_event(&col_btn);
+  consume_event(&tirette);
 
   last_potar = potar_val;
   
@@ -129,12 +141,7 @@ void loop() {
   int potar_val = 1023 - analogRead(POTAR);
 
   // si un événement a eu lieu, envoyer le message
-  if(ok_btn.event ||
-    ret_btn.event ||
-    col_btn.event ||
-    tirette.event ||
-    abs(potar_val - last_potar) > POTAR_RESOLUTION
-    ) {
+  if(event_triggered || abs(potar_val - last_potar) > POTAR_RESOLUTION) {
       snprintf_events(report_msg, REPORT_MSG_SIZE, potar_val);
   }
 
@@ -142,6 +149,7 @@ void loop() {
   // envoyer périodiquement le message
   if(millis() - report_time > REPORT_PERIOD) {
     snprintf_events(report_msg, REPORT_MSG_SIZE, potar_val);
+    report_time = millis();
   }
 
   
@@ -174,14 +182,13 @@ void loop() {
         int pitch_idx = rcv_buf[35] - 'A';
         tone(BUZZ, PITCH[pitch_idx]);
       }
-      
-
-      // TODO check that the line return is working
-      lcd.print(rcv_buf);
+      //reset buffer
+      rcv_offset = 0;
       memset(rcv_buf, '-', RCV_BUF_SIZE);
     }
-    
-    
+  } else {
+    // transmission error
+    rcv_offset = 0;
   }
 
 }

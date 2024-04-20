@@ -22,9 +22,10 @@ Le message est formaté comme suit:
 `<ok> <ret> <color> <tirette> <potar>\n`
 
 Avec `<potar>` étant un entier, et les autres champs étant un charactère parmis:
-- `'N'`: Aucun événement
-- `'P'`: bouton appuyé
-- `'R'`: bouton relâché
+- `'P'`: bouton appuyé (événement)
+- `'R'`: bouton relâché (événement)
+- `'O'`: bouton ouvert (état)
+- `'C'`: bouton fermé (état)
 
 ## Programmer la carte
 
