@@ -1,6 +1,32 @@
 # Carte LCD
 
-# Programmer la carte
+## Afficher 
+
+Envoyer sur l'UART 37 charactères:
+- 16*2 charactères pour le LCD 
+- 3 leds(R,G,B): `'0'` pour éteindre, n'importe quel autre charactère pour allumer
+- buzzer:
+    - `< 'A'` : arrête le buzzer
+    - `['A'-'G'] + 7*octave` : note à cette octave (0<=octave<=2)
+- `'\0'`: fin de chaine de charactère
+
+
+## Recevoir
+
+Le LCD envoie un message: 
+- lors d'un événement
+- périodiquement
+
+Le message est formaté comme suit:
+
+`<ok> <ret> <color> <tirette> <potar>\n`
+
+Avec `<potar>` étant un entier, et les autres champs étant un charactère parmis:
+- `'N'`: Aucun événement
+- `'P'`: bouton appuyé
+- `'R'`: bouton relâché
+
+## Programmer la carte
 
 Installer pymcuprog : `python3 -m pip install pymcuprog`
 

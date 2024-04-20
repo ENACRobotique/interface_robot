@@ -1,45 +1,50 @@
 #include <Arduino.h>
 #include <LiquidCrystal.h>
 
-//////////////// pinout /////////////
-constexpr pin_size_t LED_R = PIN_PA5;
-constexpr pin_size_t LED_G = PIN_PA3;
-constexpr pin_size_t LED_B = PIN_PB0;
+#include "params.h"
 
-constexpr pin_size_t BUZZ = PIN_PA6;
+constexpr int NB_PITCH = 21;
+int PITCH[NB_PITCH] = {
+   440,  494,  523,  587,  659,  698,  784,
+   880,  988, 1046, 1175, 1318, 1397, 1568,
+  1760, 1975, 2093, 2349, 2637, 2794, 3135
+};
 
-constexpr pin_size_t LCD_EN = PIN_PA1;
-constexpr pin_size_t LCD_RS = PIN_PA2;
-constexpr pin_size_t LCD_D4 = PIN_PC0;
-constexpr pin_size_t LCD_D5 = PIN_PC1;
-constexpr pin_size_t LCD_D6 = PIN_PC2;
-constexpr pin_size_t LCD_D7 = PIN_PC3;
-
-constexpr pin_size_t POTAR = PIN_PA4;
-constexpr pin_size_t BTN_OK = PIN_PA7;
-constexpr pin_size_t BTN_RET = PIN_PB5;
-constexpr pin_size_t BTN_COLOR = PIN_PB4;
-constexpr pin_size_t TIRETTE = PIN_PB1;
-
-/////////////////////////////////////
-
-constexpr int DEBOUNCE_VAL = 2000;
-constexpr uint32_t LCD_UPDATE_PERIOD = 100;
-constexpr uint32_t REPORT_PERIOD = 200;
 
 LiquidCrystal lcd(LCD_RS, LCD_EN, LCD_D4, LCD_D5, LCD_D6, LCD_D7);
 
 
 typedef struct {
   pin_size_t pin;
-  int debounce;
+  int debounce;     //  counter for button debouce
   int state;
+  /**
+   * Valeurs possibles pour event:
+   *    'N': pas d'évènements
+   *    'P': pressed
+   *    'R': released
+  */
+  char event;
 } btn_t;
 
-btn_t ok_btn = {BTN_OK, -1, 0};
-btn_t ret_btn = {BTN_RET, -1, 0};
-btn_t col_btn = {BTN_COLOR, -1, 0};
-btn_t tirette = {TIRETTE, -1, 0};
+
+btn_t ok_btn = {BTN_OK, -1, 0, 'N'};
+btn_t ret_btn = {BTN_RET, -1, 0, 'N'};
+btn_t col_btn = {BTN_COLOR, -1, 0, 'N'};
+btn_t tirette = {TIRETTE, -1, 0, 'N'};
+int last_potar = 0;   // last potar value sent
+
+// last report time
+uint32_t report_time = 0;
+char report_msg[REPORT_MSG_SIZE];
+
+// receive buffer
+char rcv_buf[RCV_BUF_SIZE];
+size_t rcv_offset;
+
+
+void snprintf_events(char *str, size_t size, int potar_val);
+
 
 void btn_cb(btn_t* btn) {
   if(digitalRead(btn->pin) == btn->state) {
@@ -71,8 +76,13 @@ void setup() {
   attachInterrupt(BTN_COLOR, isr, CHANGE);
   attachInterrupt(TIRETTE, isr, CHANGE);
 
-  lcd.clear();
+  // initialize report message
+  snprintf_events(report_msg, REPORT_MSG_SIZE, 0);
 
+  // initialise buffer de réception
+  memset(rcv_buf, '-', RCV_BUF_SIZE);
+
+  lcd.clear();
 }
 
 void debounce_update(btn_t* btn) {
@@ -80,63 +90,99 @@ void debounce_update(btn_t* btn) {
     btn->debounce -= 1;
     if(btn->debounce == 0 && digitalRead(btn->pin) == btn->state) {
       btn->state ^= 1;
+      if(btn->state) {
+        btn->event = 'P';
+      } else {
+        btn->event = 'R';
+      }
     }
   }
 }
 
-uint32_t time_lcd_update = 0;
-uint32_t report_time = 0;
+void snprintf_events(char *str, size_t size, int potar_val) {
+  snprintf(str, size, "%c %c %c %c %d",
+    ok_btn.event, ret_btn.event,
+    col_btn.event, tirette.event,
+    potar_val);
+  
+  // reset events
+  ok_btn.event = 'N';
+  ret_btn.event = 'N';
+  col_btn.event = 'N';
+  tirette.event = 'N';
+
+  last_potar = potar_val;
+  
+  // send message
+  Serial.println(report_msg);
+  report_time = millis();
+}
+
+
 
 void loop() {
   debounce_update(&ok_btn);
   debounce_update(&ret_btn);
   debounce_update(&col_btn);
   debounce_update(&tirette);
+
   int potar_val = 1023 - analogRead(POTAR);
 
+  // si un événement a eu lieu, envoyer le message
+  if(ok_btn.event ||
+    ret_btn.event ||
+    col_btn.event ||
+    tirette.event ||
+    abs(potar_val - last_potar) > POTAR_RESOLUTION
+    ) {
+      snprintf_events(report_msg, REPORT_MSG_SIZE, potar_val);
+  }
+
+
+  // envoyer périodiquement le message
   if(millis() - report_time > REPORT_PERIOD) {
-    report_time = millis();
-    char buf[50];
-    // ok, ret, color, tirette, potar
-    snprintf(buf, 50, "%d %d %d %d %d", ok_btn.state, ret_btn.state, col_btn.state, tirette.state, potar_val);
-    Serial.println(buf);
+    snprintf_events(report_msg, REPORT_MSG_SIZE, potar_val);
   }
-
-  if(millis() - time_lcd_update > LCD_UPDATE_PERIOD) {
-    time_lcd_update = millis();
-    lcd.clear();
-    lcd.print(potar_val);
-    lcd.setCursor(10, 0);
-    static int color_state = col_btn.state;
-    static int color = 0;
-    if(col_btn.state && color_state != col_btn.state)
-    {
-      color = (color + 1) % 2;
-    }
-    color_state = col_btn.state;
-
-    static constexpr char* COLORS[] = {
-      "BLEU",
-      "JAUNE"
-    };
-    lcd.print(COLORS[color]);
-
-    lcd.setCursor(8, 1);
-    lcd.print(ret_btn.state);
-    lcd.setCursor(11, 1);
-    lcd.print(ok_btn.state);
-    lcd.setCursor(14, 1);
-    lcd.print(tirette.state);
-  }
-
-  // if(tirette.state) {
-  //   tone(BUZZ, 440, 1000);
-  // }
 
   
+  // receive bytes
+  int bytes_available = Serial.available();
+  // check for buffer overflow
+  if(rcv_offset + bytes_available <= RCV_BUF_SIZE) {
+    // add bytes read to the buffer
+    Serial.readBytes(rcv_buf+rcv_offset, bytes_available);
+    rcv_offset += bytes_available;
 
+    // try getting the lenght of the string (\0 terminated)
+    size_t len = strnlen(rcv_buf, RCV_BUF_SIZE);
+      // if(len != RCV_BUF_SIZE) {
+    if(len == LCD_MSG_SIZE) {
+      // display first line
+      lcd.setCursor(0, 0);
+      lcd.write(rcv_buf, 16);
+      // display 2nd line
+      lcd.setCursor(0, 1);
+      lcd.write(rcv_buf+16, 16);
 
-  digitalWrite(LED_G, ok_btn.state);
-  digitalWrite(LED_R, ret_btn.state);
-  digitalWrite(LED_B, tirette.state);
+      digitalWrite(LED_R, rcv_buf[32] =! '0');
+      digitalWrite(LED_R, rcv_buf[33] =! '0');
+      digitalWrite(LED_R, rcv_buf[34] =! '0');
+
+      if(rcv_buf[35] < 'A') {
+        noTone(BUZZ);
+      } else if(rcv_buf[35] <= 'A' + NB_PITCH) {
+        int pitch_idx = rcv_buf[35] - 'A';
+        tone(BUZZ, PITCH[pitch_idx]);
+      }
+      
+
+      // TODO check that the line return is working
+      lcd.print(rcv_buf);
+      memset(rcv_buf, '-', RCV_BUF_SIZE);
+    }
+    
+    
+  }
+
 }
+
