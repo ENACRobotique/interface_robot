@@ -28,6 +28,11 @@ typedef struct {
   char event;
 } btn_t;
 
+enum {
+  RcvOk,
+  RcvError,
+} receive_state;
+
 
 btn_t ok_btn = {BTN_OK, -1, 0, 'O'};
 btn_t ret_btn = {BTN_RET, -1, 0, 'O'};
@@ -83,6 +88,7 @@ void setup() {
 
   // initialise buffer de réception
   memset(rcv_buf, '-', RCV_BUF_SIZE);
+  receive_state = RcvOk;
 
   lcd.clear();
 }
@@ -156,7 +162,11 @@ void loop() {
   // receive bytes
   int bytes_available = Serial.available();
   // check for buffer overflow
-  if(rcv_offset + bytes_available <= RCV_BUF_SIZE) {
+  if(rcv_offset + bytes_available > RCV_BUF_SIZE) {
+    receive_state = RcvError;
+  }
+
+  if(receive_state == RcvOk) {
     // add bytes read to the buffer
     Serial.readBytes(rcv_buf+rcv_offset, bytes_available);
     rcv_offset += bytes_available;
@@ -187,9 +197,14 @@ void loop() {
       memset(rcv_buf, '-', RCV_BUF_SIZE);
     }
   } else {
-    // transmission error
+    // in case of error, read serial until the next \0
     rcv_offset = 0;
+    while(Serial.available() > 0) {
+      if(Serial.read() == '\0') {
+        receive_state = RcvOk;
+        break;
+      }
+    }
   }
-
 }
 
