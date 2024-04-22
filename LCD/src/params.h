@@ -23,9 +23,9 @@ constexpr pin_size_t TIRETTE = PIN_PB1;
 
 /////////////////////////////////////
 
-constexpr int DEBOUNCE_VAL = 2000;
+constexpr int DEBOUNCE_VAL = 50;
 constexpr uint32_t REPORT_PERIOD = 1000;
-constexpr int POTAR_RESOLUTION = 50;
+constexpr int POTAR_RESOLUTION = 5;
 
 constexpr size_t REPORT_MSG_SIZE = 20;
 

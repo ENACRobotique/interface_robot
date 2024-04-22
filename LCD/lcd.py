@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 from serial import Serial
 from enum import Enum
 from typing import Callable
@@ -45,7 +46,7 @@ class LCD(Thread):
         g = b'1' if green else b'0'
         b = b'1' if blue else b'0'
 
-        if isinstance(buzz, bytes):
+        if isinstance(buzz, bytes) or isinstance(buzz, str):
             buzz = ord(buzz)
         if buzz < ord('A') or buzz > ord('A')+7*3:
             buzz = ord('0')
@@ -60,14 +61,18 @@ class LCD(Thread):
 
     def run(self):
         while self.running:
-            line = self._ser.readline()
+            line = self._ser.readline().strip()
             
             #timeout
             if line == b'':
                 continue
-
-            *buttons, potar = line.strip().split()
-            potar = int(potar)
+            print(line)
+            *buttons, potar = line.split()
+            try:
+                potar = int(potar)
+            except ValueError as e:
+                print(e)
+                potar = self._state[Button.POTAR]
 
             if len(buttons) > 4:
                 print(f"Too many elements: {line}")
@@ -86,20 +91,24 @@ class LCD(Thread):
             
             # potar
             diff = abs(potar - self._state[Button.POTAR])
-            if diff > POTAR_RESOLUTION:
-                self.event_cb(Button.POTAR, potar)
+            if diff >= POTAR_RESOLUTION:
+                self._state[Button.POTAR] = potar - (potar % POTAR_RESOLUTION)
+                self.event_cb(Button.POTAR, self._state[Button.POTAR])
+                
 
 
 if __name__ == '__main__':
     def cb(btn: Button, val):
-        notes = ['C', 'E', 'G', ord('C')+7]
+        notes = ['C', 'E', 'G', ord('C')+7, '0']
         buzz = notes[btn.value]
-        lcd.display(btn.name, str(val), False, True, False, buzz)
+        valstr = val.decode() if isinstance(val, bytes) else str(val)
+        lcd.display(btn.name, valstr, False, True, False, buzz)
         print(btn, val)
     
-    lcd = LCD('/dev/ttyACM0', cb)
+    lcd = LCD('/dev/ttyUSB1', cb)
+    lcd.display("Bonjour", "les gens", False, True, False)
     while True:
-        lcd.display("Bonjour", "les gens", False, True, False)
-        time.sleep(2)
-        lcd.display("Comment", "allez-vous ?", False, False, True)
+        # lcd.display("Bonjour", "les gens", False, True, False)
+        # time.sleep(2)
+        # lcd.display("Comment", "allez-vous ?", False, False, True)
         time.sleep(2)

@@ -147,8 +147,15 @@ void loop() {
   int potar_val = 1023 - analogRead(POTAR);
 
   // si un événement a eu lieu, envoyer le message
-  if(event_triggered || abs(potar_val - last_potar) > POTAR_RESOLUTION) {
+  if(event_triggered) {
       snprintf_events(report_msg, REPORT_MSG_SIZE, potar_val);
+      event_triggered = false;
+  }
+  // si le potar a beaucoup changé
+  if(abs(potar_val - last_potar) >= POTAR_RESOLUTION) {
+      potar_val = potar_val - (potar_val%POTAR_RESOLUTION);
+      snprintf_events(report_msg, REPORT_MSG_SIZE, potar_val);
+      last_potar = potar_val;
   }
 
 
@@ -190,7 +197,7 @@ void loop() {
         noTone(BUZZ);
       } else if(rcv_buf[35] <= 'A' + NB_PITCH) {
         int pitch_idx = rcv_buf[35] - 'A';
-        tone(BUZZ, PITCH[pitch_idx]);
+        tone(BUZZ, PITCH[pitch_idx], 200);
       }
       //reset buffer
       rcv_offset = 0;
